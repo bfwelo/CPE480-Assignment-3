@@ -1,6 +1,6 @@
 # CPE480-Assignment-3
 
-[x] value forwarding we need:
+- [x] value forwarding we need:
 - source value check
 - dest value check
 at each stage for conflicts and per instruction
