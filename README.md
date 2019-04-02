@@ -1,11 +1,11 @@
 # CPE480-Assignment-3
 
-- [x] value forwarding we need:
+- [ ] value forwarding we need:
 - source value check
 - dest value check
 at each stage for conflicts and per instruction
 
-pc update + pipeline clear we need:
+- [ ] pc update + pipeline clear we need:
 - check if we're jumping (need to figure out which stage)
 - if(op == `OPjr) do nothing
 - else pc+1
