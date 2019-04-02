@@ -11,7 +11,7 @@ at each stage for conflicts and per instruction
 - else pc+1
 per instruction
 
-jump register check:
+- [ ] jump register check:
 - don't update the pc until register is written
 - if something is writing to a register that we might jump to, wait until that operation is in stage 4 before we jump
 - if(op == `OPjr && s1regsrc == s4regsrc) then jump and set pipeline clear
@@ -24,13 +24,13 @@ for all:
 - check if pipeline clear set
     - nop and 0
 
-0.) fetch stage
+- [ ] 0.) fetch stage
 - passes values to next stage, nothing else
 
-1.) read stage
+- [ ] 1.) read stage
 - take the values calculated from the value forwarding and pass them on to the next stage
 
-2.) alu / memory stage
+- [ ] 2.) alu / memory stage
 - integer operations
 - floating point add
 - recip
@@ -39,10 +39,10 @@ for all:
     - check sys for halt
     - 
 
-3.) alu2 stage
+- [ ] 3.) alu2 stage
 - multiply here
 - second part of divide
 
-4.) reg write
+- [ ] 4.) reg write
 - s4regsrc <= s3regsrc
 - literally just writing values to registers
