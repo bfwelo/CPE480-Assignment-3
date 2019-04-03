@@ -1,8 +1,17 @@
 # CPE480-Assignment-3
 
 - [ ] value forwarding we need:
-- source value check
-- dest value check
+- value check
+    - check if instruction uses a register
+    - if it does, check if any others in the pipeline do
+    - if the src and dest for one later in the pipeline match, act accordingly
+
+- pre - check
+    - check if any later instruction uses value in pre
+    - if pre is changed again before use, ignore
+
+- checking in stage 2
+
 at each stage for conflicts and per instruction
 
 - [ ] pc update + pipeline clear we need:
@@ -37,7 +46,6 @@ for all:
 - memory ops
     - st, lf, li
     - check sys for halt
-    - 
 
 - [ ] 3.) alu2 stage
 - multiply here
