@@ -250,17 +250,6 @@ always @(*) begin
 end
 endmodule
 
-//mux 2x1 module
-module mux_2to1(y, a , b , sel);
-output `WORD y;
-input `WORD a, b;
-input sel;
-reg `WORD y;
-Assign y = sel ? a : b;
-endmodule
-//end mux module
-
-
 //PROCSSOR MODULE
 module processor(halt, reset, clk);
 output reg halt;
@@ -301,41 +290,16 @@ f2i cvti1(cvt2int1, regfile[ir `REG1]`WORD);
 f2i cvti2(cvt2int2, regfile[ir `REG2]`WORD);
 i2f cvtf1(cvt2float1, regfile[ir `REG1]`WORD);
 i2f cvtf2(cvt2float2, regfile[ir `REG2]`WORD);
-reg `WORD s1srcval, s1dstval;
-reg `OP ir0, ir1;
-reg `WORD s0src, s0dst, s0regdst, s1regdst, s2regdst;
-
 
 always @(reset) begin
  halt = 0;
  pc = 0;
  s = `Start;
- ir0 = `OPno; 
- ir1 = `OPno;
  $readmemh0(regfile);
  $readmemh1(mainmem);
  pre <= 0;
 end
-always @(*) ir <= mainmem[pc];
-
-// new pc value
-always @(*) newpc = (((s1op == `OPjr) && (s1dstval == 0)) ? s1srcval : (pc + 1));
-
-// IF squash? Only for jr... with 2-cycle delay if taken
-always @(*) ifsquash = ((s1op == `OPjr) && (s1dstval == 0));
-
-// Instruction Fetch
-always @(posedge clk) if (!halt) begin
-  ir0 <= (ifsquash ? `OPno : op);
-  s0regdst <= (ifsquash ? 0 : s);
-  s0src <= ir `Src;
-  s0dst <= ir `Dest;
-  pc <= newpc;
-end
-
-
-
-     
+    
 always @(posedge clk) // I think this is the 
 begin
 	case (s)

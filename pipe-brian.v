@@ -52,7 +52,7 @@
 `define OPjz8	5'b10111
 
 // special 
-`define OPnop   5'111111
+`define OPnop   5'b11111
 
 // state numbers only
 `define Fetch	5'b11000 // s0
@@ -97,7 +97,21 @@ module processor(halt, reset, clk);
     // actual values from registers
     reg `WORD s1val, s2val, s3val;
     reg `WORD s1pre, s2pre, s3pre;
-
+    
+	always @(reset) begin
+		pc = 0;
+		halt = 0;
+		s0op1 = `OPnop;
+		s1op1 = `OPnop;
+		s2op1 = `OPnop;
+		s3op1 = `OPnop;
+		s0op2 = `OPnop;
+		s1op2 = `OPnop;
+		s2op2 = `OPnop;
+		s3op2 = `OPnop;
+		$readmemh0(regfile);
+		$readmemh1(mainmem);
+	end
 
     // - [ ] value forwarding we need:
     // - value check
