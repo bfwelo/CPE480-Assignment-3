@@ -99,6 +99,21 @@ module processor(halt, reset, clk);
     reg `WORD s1pre, s2pre, s3pre;
 
 
+    // - [ ] value forwarding we need:
+    // - value check
+    //     - check if instruction uses a register
+    //     - if it does, check if any others in the pipeline do
+    //     - if the src and dest for one later in the pipeline match, act accordingly
+
+    // - pre - check
+    //     - check if any later instruction uses value in pre
+    //     - if pre is changed again before use, ignore
+
+    // - checking in stage 2
+
+    // at each stage for conflicts and per instruction
+
+    
     // src value forwarding
     always @(*) begin
         //stage 0

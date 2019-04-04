@@ -9,8 +9,15 @@
 - pre - check
     - check if any later instruction uses value in pre
     - if pre is changed again before use, ignore
+    - checking in stage 2
 
-- checking in stage 2
+- instructions src from acc: add, sub, xor, and, or, mul, div, a2r, lf, li, sh, slt, st
+- instructions dst into acc: add, sub, xor, and, or, not, mul, div, r2a, cvt, sh, slt 
+- instructions src from reg: add, sub, xor, and, or, not, mul, div, st, cvt, sh, slt, st, jnz8, jr, jz8
+- instructions dst into reg: lf, li, cf8, ci8
+- instructions src from pre: cf8, ci8, jnz8, jp8, jz8
+- instructions dst into pre: pre
+
 
 at each stage for conflicts and per instruction
 
