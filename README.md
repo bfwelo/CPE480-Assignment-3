@@ -44,9 +44,11 @@ for all:
 
 - [ ] 0.) fetch stage
 - passes values to next stage, nothing else
+- passes reg and values?
 
 - [ ] 1.) read stage
 - take the values calculated from the value forwarding and pass them on to the next stage
+- how about the prefix?
 
 - [ ] 2.) alu / memory stage
 - integer operations
