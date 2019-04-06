@@ -2,6 +2,8 @@
 
 - [ ] value forwarding notes:
 
+- add, sub, xor, and, or, not, sh, slt, mul, div, r2a, cvt, a2r, lf, li, st, jr, jz8, jnz8, cf8, ci8, pre, jp8, sys
+
 - instructions src from acc: add, sub, xor, and, or, sh, slt, mul, div, a2r, lf, li, st, cvt
 - instructions dst into acc: add, sub, xor, and, or, not, sh, slt, mul, div, r2a, cvt
 
