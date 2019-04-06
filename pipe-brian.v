@@ -3,7 +3,7 @@
 `define OP    [4:0] // opcode length
 `define REG   [2:0] // reg location length
 `define HWORD [7:0] // half word length
-
+`define STATE [5:0]
 
 `define OP1	  [15:11] // Typical opcode field
 `define OP2   [7:3] // VLIW 2nd Op location
@@ -108,6 +108,19 @@ module processor(halt, reset, clk);
     reg `WORD s0val2, s1val2, s2val2, s3val2;
     reg `WORD s1pre, s2pre, s3pre;
     
+    reg ifsquash, rrsquash; 
+    reg `WORD srcval2, newpc;
+    wire `OP op1;
+    wire `OP op2;
+    wire `STATE regdst1;
+    reg `REG s0src, s0src2, s0regdst, s1regdst2, s3regdst2;
+	
+	always @(*) ir = mainmen[pc];
+	
+	always @(*) ifsquash = (s1op == `OPjr) &&(s1op == `OPjz8) && (s1op == `OPjnz8) &&(s1op == `OPjp8 );
+
+	always @(*) rrsquash =  (s1op == `OPjr);
+
 	always @(reset) begin
 		pc = 0;
 		halt = 0;
@@ -227,6 +240,27 @@ module processor(halt, reset, clk);
         else
             newpc = pc + 1;
     end
+ 
+	
+	
+	//STAGE 0: FETCH
+	always @(posedge clk) if (!halt) begin
+		s0op1 <= (ifsquash ? `OPnop1 : op1);
+		s0op2 <= (ifsquash ? `OPnop2 : op2);
+		s0regdst <= (ifsquash ? 0 : regdst1);
+		s0src <= regfile[ir `REG1];
+		s0src2 <= regfile[ir `REG2];
+		pc <= newpc;
+	end 
+
+	//STAGE 1: Reg Read
+	always @(posedge clk) if (!halt) begin
+		s1op1 <= (rrsquash ? `OPnop1 : s0op1);
+		s1op2 <= (rrsquash ? `OPnop2 : s0op2);
+		s1regdst2 <= (rrsquash ? 0 : s0regdst);
+ 		s1val1 <= s0val1;
+  		s1val2 <= srcval2;
+	end
 
 
 
