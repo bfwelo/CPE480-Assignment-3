@@ -394,7 +394,7 @@ module processor(halt, reset, clk);
 		s0op1 <= (ifsquash ? `OPnop1 : op1);
 		s0op2 <= (ifsquash ? `OPnop2 : op2);
 		s0regdst <= (ifsquash ? 0 : regdst1);
-		s0src <= regfile[ir `REG1];
+		s0src <= regfile[ir `REG1];  			
 		s0src2 <= regfile[ir `REG2];
 		pc <= newpc;
 	end 
@@ -407,7 +407,26 @@ module processor(halt, reset, clk);
  		s1val1 <= s0val1;
   		s1val2 <= srcval2;
 	end
+	// stage 2 ALU // some varibles will have to change and might miss something
+   	always @ (posdge clk) if (!halt) begin
+    
+		s2op1 <= (( s1op1==)?something : s1op1);// set something to distinguish the two kind of opcode 
+		s2op2 <= (( s1op2==)?something : s1op2);// set something to distinguish the two kind of opcode 
+		s2regdst2 <= s1regdst2;
 
-
+		s2val1 <= ALU1out;
+		s2val2 <= ALU2out;
+	end
+    	// stage 3 ALU2
+    	always @ (posdge clk) if (!halt) begin 
+		s3op1 <= ((s2op1==something)?s2op1 : nops);
+		s3val1 <= ((s2op1!==something)?s2val1 : result for floating ALU1)
+		s3op2 <= ((s2op2==something)?s2op1 : nops);
+		s3val2 <= ((s2op1!==something)?s2val2 : result for floating ALU2)
+	end
+    	// stage 4 register write
+    	always @ (posdge clk if (!halt) begin 
+        	if (s2regdst2 != 0) regfile[s2regdst2] <=s2val;
+	end
 
 endmodule
