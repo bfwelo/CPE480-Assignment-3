@@ -1,7 +1,8 @@
 ; 8 bit operators
 .C1 $.r := .this:5 .r:3
 .C1 $.r0r , .C1 $.r1r := .this:5 .r0r:3 .C1:5 .r1r:3
-.alias .C1 add sub xor and or not sh slt mul div a2r r2a lf li st cvt jr  
+.alias .C1 add sub xor and or sh slt mul div not cvt r2a a2r lf li st jr  
+
 
 ; 13 bit + 3 bit padding
 .C2 .imm := .this:5 0:3 .imm:8 
@@ -9,7 +10,7 @@
 
 ; 16 bit 
 .C3 $.r, .imm := .this:5 .r:3 .imm:8
-.alias .C3 20 cf8 ci8 jnz8 jz8
+.alias .C3 20 jnz8 jz8 cf8 ci8
 
 ; 32 bit macros
 .C4 $.r, .imm := pre:5 (.imm>>8):8 (20 + .this):5 .imm:8

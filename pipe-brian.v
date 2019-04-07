@@ -23,38 +23,32 @@
 `define REGSIZE [7:0]
 `define MEMSIZE [65535:0]
 
-// 8 bit operators - PHASE 1 DECODING
-// opcode values, also state numbers
-`define OPadd	5'b00000
-`define OPsub	5'b00001
-`define OPxor	5'b00010
-`define OPand	5'b00011
-`define OPor	5'b00100
-`define OPnot	5'b00101
-`define OPsh	5'b00110
-`define OPslt	5'b00111
-`define OPmul	5'b01000
-`define OPdiv	5'b01001
-`define OPa2r	5'b01010
-`define OPr2a	5'b01011
-`define OPlf	5'b01100
-`define OPli	5'b01101
-`define OPst	5'b01110
-`define OPcvt	5'b01111
-`define OPjr	5'b10000
 
-// PHASE 2 DECODING
-// 13 bit + 3 bit padding: pre jp8 sys
-`define OPpre	5'b10001 // must be 17
-`define OPjp8   5'b10010
-`define OPsys   5'b10011
+`define OPadd  5'b00000 // ---------- begin group 1 // double packable
+`define OPsub  5'b00001 
+`define OPxor  5'b00010 
+`define OPand  5'b00011 
+`define OPor   5'b00100 
+`define OPsh   5'b00101 
+`define OPslt  5'b00110 
+`define OPmul  5'b00111 
+`define OPdiv  5'b01000 
+`define OPnot  5'b01001  // ---------- begin group 2
+`define OPcvt  5'b01010 
+`define OPr2a  5'b01011 
+`define OPa2r  5'b01100  // ---------- begin group 3
+`define OPlf   5'b01101 
+`define OPli   5'b01110 
+`define OPst   5'b01111  // ---------- begin group 4
+`define OPjr   5'b10000  // ---------- begin group 5
+`define OPjnz8 5'b10100  // full word
+`define OPjz8  5'b10101 
+`define OPcf8  5'b10110  // ---------- begin group 6
+`define OPci8  5'b10111 
+`define OPpre  5'b10001  // ---------- begin group 7, 13 bits + 3 padding
+`define OPjp8  5'b10010 
+`define OPsys  5'b10011 
 
-// 16 bit	
-// cf8 ci8 jnz8 jz8
-`define OPcf8	5'b10100
-`define OPci8	5'b10101
-`define OPjnz8	5'b10110
-`define OPjz8	5'b10111
 
 // special 
 `define OPnop1   {`OPa2r, `ACC1} 
@@ -112,19 +106,14 @@ module processor(halt, reset, clk);
     reg `WORD s0acc2, s1acc2, s2acc2, s3acc2;
 
     reg `WORD s1pre, s2pre, s3pre;
+
+    // intermediate condition values
+    reg s3g1[3:0];
+    reg s3g2[3:0];
+    reg t[3:0];
     
     reg ifsquash, rrsquash; 
-    reg `WORD srcval2, newpc;
-    wire `OP op1;
-    wire `OP op2;
-    wire `STATE regdst1;
-    reg `REG s0src, s0src2, s0regdst, s1regdst2, s3regdst2;
-	
-	always @(*) ir = mainmen[pc];
-	
-	always @(*) ifsquash = (s1op == `OPjr) &&(s1op == `OPjz8) && (s1op == `OPjnz8) &&(s1op == `OPjp8 );
-
-	always @(*) rrsquash =  (s1op == `OPjr);
+    reg `WORD newpc;
 
 	always @(reset) begin
 		pc = 0;
@@ -143,251 +132,87 @@ module processor(halt, reset, clk);
 		$readmemh1(mainmem);
 	end
 
+    always @(*) ir = mainmen[pc];
+	
+	always @(*) ifsquash = (s1op1 == `OPjr) &&(s1op1 == `OPjz8) && (s1op1 == `OPjnz8) &&(s1op1 == `OPjp8 );
+
+
+    // value forwarding for acc, reg, and pre
+    // modify acc: not, add, sub, xor, and, or, sh, slt, mul, div, r2a, cvt
+    // modify reg: cf8, ci8, li, lf, a2r
     always @(*) begin
-        if(t1)  
-            s0acc1 = (t3 || t4 && t9) ? s3val1 : ((t8 && t10) ? s3val2 : regfile[`ACC1]);
-    end
+        s3g1[0] = s3op1 < 9;
+        s3g1[1] = s3op1 == `OPnot || s3op1 == `OPr2a || s3op1 == `OPcvt;
+        s3g1[2] = s3op1 == `OPlf || s3op1 == `OPli || s3op1 == `OPa2r;
+        s3g1[3] = s3op1 == `OPcf8 || s3op1 == `OPci8;
 
-    always @(*) begin
-        if(t5)
-            s0acc2 = (t7 || t8 && t12) ? s3val2 : ((t4 && t11) ? s3val1 : regfile[`ACC2]);
-    end 
+        t[0] = s3g1[0] || s3g1[1];
+        t[1] = s3g1[2] || s3g1[3];
 
-    always @(*) begin
-        if(t2)
-            s0val1 = (t4 && t13) ? s3val1 : ((t8 && t15) ? s3val2 : regfile[s0reg1]);
-    end
+        // 2nd half -----------------
 
-    always @(*) begin
-        if(t6)
-            s0val2 = (t4 && t16) ? s3val1 : ((t8 && t14) ? s3val2 : regfile[s0reg2]);
-    end 
+        s3g2[0] = s3op2 < 9;
+        s3g2[1] = s3op2 == `OPnot || s3op2 == `OPr2a || s3op2 == `OPcvt;
+        s3g2[2] = s3op2 == `OPlf || s3op2 == `OPli || s3op2 == `OPa2r;
+        // cf8 and ci8 don't exist in second half
 
-    always @(*) begin
-        if(s0op1 == `OPpre)
-            s0pre = ir `IMM8;
-        else if(s3op1 == `OPpre)
-            s0pre = s3pre;
-    end   
-        
-    // TODO: src value forwarding
-    always @(*) begin
-        //stage 0
-        case(s0op1) // load immediate values
-        `OPcf8, 
-        `OPci8: s0val1 = {s1pre, ir `Imm8};
-        `OPadd, 
-        `OPsub, 
-        `OPxor, 
-        `OPand, 
-        `OPor, 
-        `OPsh, 
-        `OPslt, 
-        `OPmul, 
-        `OPdiv, 
-        `OPa2r, 
-        `OPlf, 
-        `OPli, 
-        `OPst, 
-        `OPcvt
-        endcase
-        
-        // src relies on the value of dst
-        // s0val1 is the value "read in" for the register during stage 1
-        // s3val1 is the computed value written to the register after processing, before being written to regfile
-        // add, sub, xor, and, or, not, sh, slt, mul, div, cvt, r2a, a2r, lf, li, st, jr, jz8, jnz8, cf8, ci8, pre, jp8, sys
-        // 24, 21 that use reg or acc
-        
-        
-        // rely on acc + reg: add, sub, xor, and, or, sh, slt, mul, div, st
-        // rely on just acc: li, lf, a2r
-        // rely on just reg: cvt, not, jr, r2a, jz8, jnz8
-        // doesn't rely on acc or reg: pre, jp8, sys
+        t[2] = s3g2[0] || s3g2[1];
+        t[3] = s3g2[2];
 
-        // rely on acc: add, sub, xor, and, or, sh, slt, mul, div, st, li, lf, a2r
-        // rely on reg: add, sub, xor, and, or, sh, slt, mul, div, st, cvt, not, jr, r2a, jz8, jnz8
+        // s3op2 <= 16 is for checking if the instruction in stage 3 even has 2 operators
+        // favors reg 1 value in later stage
+        s0acc1 = (t[0] || t[1] && s3reg1 == `ACC1) ? s3val1 : ((t[3] && s3reg2 == `ACC1 && s3op2 <= 16) ? s3val2 : regfile[`ACC1]);
+        s0val1 = (t[1] && s0reg1 == s3reg1) ? s3val1 : ((t[3] && s0reg1 == s3reg2 && s3op2 <= 16) ? s3val2 : regfile[s0reg1]);
 
-        // modify acc: not, add, sub, xor, and, or, sh, slt, mul, div, r2a, cvt
-        // modify reg: cf8, ci8, li, lf, a2r
-        
-        // add, sub, xor, and, or, sh, slt, mul, div: 1, 2, 3
-        // not, r2a, cvt: 2, 3
-        // li, lf, a2r: 1, 4
-        // st: 1, 2
-        // jr, jz8, jnz8: 2
-        // cf8, ci8: 4
-        
-        // add, sub, xor, and, or, sh, slt, mul, div: 1, 2, 3
-        // not, r2a, cvt: 2, 3 
-        // li, lf, a2r: 1, 4
-        // st: 1, 2
-        // jr, jz8, jnz8: 2
-        // cf8, ci8: 4
+        s0acc2 = (t[2] || t[3] && s3reg2 == `ACC2 && s3op2 <= 16) ? s3val2 : ((t[1] && s3reg1 == `ACC2) ? s3val1 : regfile[`ACC2]);
+        s0val2 = (t[1] && s0reg2 == s3reg1) ? s3val1 : ((t[3] && s0reg2 == s3reg2 && s3op2 <= 16) ? s3val2 : regfile[s0reg2]);
 
-        // pre, jp8, sys: others
+        s0pre = (s3op1 == `OPpre || (s3op2 <= 16 && s3op2 == `OPpre)) ? s3pre : (s0op1 == `OPpre)? ir `IMM8 : pre;
 
-        // double packable
-        // ---------- begin group 1
-        // add	10000 1
-        // sub	10001 2
-        // xor	10010 3
-        // and	10011 4
-        // or	10100 5
-        // sh   10101 6
-        // slt	10110 7
-        // mul	10111 8
-        // div	10010 9
-        // ---------- begin group 2
-        // not	00101 10
-        // r2a	01011 11
-        // cvt	01111 12
-        // ---------- begin group 3
-        // lf	01100 13
-        // li	01101 14
-        // a2r	01010 15
-        // ---------- begin group 4
-        // st	01110 16
-        // ---------- begin group 5
-        // jr	10000 17
-        // full word
-        // jnz8 10110 18
-        // jz8	10111 19
-        // ---------- begin group 6
-        // cf8	10100 20
-        // ci8	10101 21
-        // ---------- begin group 7
-        // full word with padding, check 
-        // pre  10001 22
-        // jp8  10010 23
-        // sys  10011 24
+    end  
 
 
-        // // PHASE 2 DECODING
-        // // 13 bit + 3 bit padding: pre jp8 sys
-        // `define OPpre	5'b10001 // must be 17
-        // `define OPjp8   5'b10010
-        // `define OPsys   5'b10011
-
-        // // 16 bit	
-        // // cf8 ci8 jnz8 jz8
-        // `define OPcf8	5'b10100
-        // `define OPci8	5'b10101
-        // `define OPjnz8	5'b10110
-        // `define OPjz8	5'b10111
-
-        // add, sub, xor, and, or, sh, slt, mul, div, st, li,  lf,  a2r
-        // add, sub, xor, and, or, sh, slt, mul, div, st, r2a, cvt, not, jr, jz8, jnz8
-        // add, sub, xor, and, or, sh, slt, mul, div,     r2a, cvt, not
-        // cf8, ci8, li, lf, a2r
-
-        // t1: s0op1 in [add, sub, xor, and, or, sh, slt, mul, div, st, li,  lf,  a2r]                // does s0op1 rely on acc1?
-        // t2: s0op1 in [add, sub, xor, and, or, sh, slt, mul, div, st, r2a, cvt, not, jr, jz8, jnz8] // does s0op1 rely on reg?
-        // t3: s3op1 in [add, sub, xor, and, or, sh, slt, mul, div,     r2a, cvt, not]                // does s3op1 modify acc1?
-        // t4: s3op1 in [cf8, ci8, li, lf, a2r]                                                       // does s3op1 modify reg?
-
-        // t5: s0op2 in [add, sub, xor, and, or, sh, slt, mul, div, st, li,  lf,  a2r]                // does s0op2 rely on acc2?
-        // t6: s0op2 in [add, sub, xor, and, or, sh, slt, mul, div, st, r2a, cvt, not, jr, jz8, jnz8] // does s0op2 rely on reg?
-        // t7: s3op2 in [add, sub, xor, and, or, sh, slt, mul, div,     r2a, cvt, not]                // does s3op2 modify acc2?
-        // t8: s3op2 in [cf8, ci8, li, lf, a2r]                                                       // does s3op2 modify reg?
-
-        // t9: s3reg1 == `ACC1   // is the s3 1st half register the 1st acc?
-        // t10: s3reg2 == `ACC1   // is the s3 2nd half register the 1st acc?
-        // t11: s3reg1 == `ACC2   // is the s3 1st half register the 2nd acc?
-        // t12: s3reg2 == `ACC2   // is the s3 2nd half register the 2nd acc?
-
-        // t13: s0reg1 == s3reg1  // is the s0 1st half reg the same as the s3 1st half reg?
-        // t14: s0reg2 == s3reg2  // is the s0 2nd half reg the same as the s3 2nd half reg?
-        // t15: s0reg1 == s3reg2  // is the s0 1st half reg the same as the s3 2nd half reg?
-        // t16: s0reg2 == s3reg1  // is the s0 2nd half reg the same as the s3 1st half reg?
-
-
-        // assume that we set if (s3reg1 == 0) s3acc1 = s3val1;
-        // assume that we set if (s3reg1 == 1) s3acc2 = s3val1;
-        // assume that we set if (s3reg2 == 0) s3acc1 = s3val2;
-        // assume that we set if (s3reg2 == 1) s3acc2 = s3val2;
-
-        // cases:
-
-        // if(t1 && t3) s0acc1 = s3val1; // later accumulator operation
-        // if(t5 && t7) s0acc2 = s3val2; // later accumulator operation
-
-        // if this command doesn't rely on acc or reg, no need to change it
-        if(t1)  
-            s0acc1 = (t3 || t4 && t9) ? s3val1 : ((t8 && t10) ? s3val2 : regfile[`ACC1]);
-        
-        if(t5)
-            s0acc2 = (t7 || t8 && t12) ? s3val2 : ((t4 && t11) ? s3val1 : regfile[`ACC2]);
-        
-        if(t2)
-            s0val1 = (t4 && t13) ? s3val1 : ((t8 && t15) ? s3val2 : regfile[s0reg1]);
-
-        if(t6)
-            s0val2 = (t4 && t16) ? s3val1 : ((t8 && t14) ? s3val2 : regfile[s0reg2]);
-        
-        if(s0op1 == `OPpre)
-            s0pre = ir `IMM8;
-        else if(s3op1 == `OPpre)
-            s0pre = s3pre;
-
-        // resolve acc1 val
-        // if(t1 && t3) s0acc1 = s3val1; // later accumulator operation
-        // if(t1 && t4 && t9) s0acc1 = s3val1; // reg operation in this alu that changes r0
-        // if(t1 && t8 && t10) s0acc1 = s3val2; // reg operation in other alu that changes r0
-        // else s0acc1 = regfile[`ACC1]
-
-        // resolve acc2 val
-        // if(t5 && t7) s0acc2 = s3val2; // later accumulator operation
-        // if(t5 && t4 && t11) s0acc2 = s3val1; // reg operation in other alu that changes r1
-        // if(t5 && t8 && t12) s0acc2 = s3val2; // reg operation in this alu that changes r1
-        // else s0acc2 = regfile[`ACC2]
-
-        // resolve reg1 val
-        // if(t2 && t4 && t13) s0val1 = s3val1; // reg operation in this alu that changes reg
-        // if(t2 && t8 && t15) s0val1 = s3val2; // reg operation in other alu that changes reg
-        // else s0val1 = regfile[s0reg1]
-
-
-        // resolve reg2 val
-        // if(t6 && t4 && t16) s0val2 = s3val1; // reg operation in this alu that changes reg
-        // if(t6 && t8 && t14) s0val2 = s3val2; // reg operation in other alu that changes reg
-        // else s0val2 = regfile[s0reg2]
-
-        //stage 1
-        if(s0op1 == )
-
-        if (s0reg1 == s2reg1) // get the result computed that will be saved in stage 3 
-            s0val1 = alu1res;
-        else if (s0src == s3regdst) // stage 2
-            s0val1 = s3val;
-        else // stage 3 / other
-            s0val1 = regfile[s0src];
-        
-        if (s1regdst2 && (s0src2 == s1regdst2)) // stage 1
-            srcval2 = alu2res;
-        else if (s3regdst2 && (s0src2 == s3regdst2)) // stage 2
-            srcval2 = s3val2;
-        else // stage 3 / other
-            srcval2 = regfile[s0src2];
-    end
-
+    // 0 pre 0
+    // 1 add 1, add 0
+    // 2 add 1, add 0
+    // 3 jnz8 $0 5
+    // 4 add 1, add 1
+    // 5 sys
+    // | fetch     | read      | alu1      | alu2      | write     | reg0 = 0, s3val1 = 0, pc = 0, pre = 0
+    // | pre 0     | nop       | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 0, pre = 0, newpc = 1, flush = false
+    // | add 1     | pre 0     | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 1, pre = 0, newpc = 2, flush = false
+    // | add 1     | add 1     | pre 0     | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 2, pre = 0, newpc = 3, flush = false
+    // | jnz8 $0 5 | add 1     | add 1     | pre 0     | nop       | reg0 = 0, s3val1 = 0, pc = 3, pre = 0, newpc = 4, flush = false
+    // | add 1     | jnz8 $0 5 | add 1     | add 1     | pre 0     | reg0 = 0, s3val1 = 1, pc = 4, pre = 0, newpc = 5, flush = false 
+    // | sys       | add 1     | jnz8 $0 5 | add 1     | add 1     | reg0 = 1, s3val1 = 2, pc = 5, pre = 0, newpc = 5, flush = true // soonest we can write to pc
+    // | sys       | nop       | nop       | jnz8 $0 5 | add 1     | reg0 = 2, s3val1 = 2, pc = 5, pre = 0, newpc = 6, flush = false
+    // | halt      | sys       | nop       | nop       | jnz8 $0 5 | reg0 = 2, s3val1 = 2, pc = 6, pre = 0, newpc = 7, flush = false
+    // | halt      | halt      | sys       | nop       | add 1     | reg0 = 2, s3val1 = 2, pc = 7, pre = 0, newpc = 8, flush = false
+    // | halt      | halt      | halt      | sys       | nop       | done
+             
 
     // DONE: new pc value
-    always @(*) begin
-        if(s1op1 == `OPjp8) // only 1
-            newpc = {s1pre, ir `Imm8};
-        else if(s1op1 == `OPjr)
-            newpc = s1val1;
-        else if(s1op2 == `OPjr)
-            newpc = s1val2;
-        else if(s1op1 == `OPjz8 && s1val1 == 0) // only 1
-            newpc = {s1pre, ir `Imm8};
-        else if(s1op1 == `OPjnz8 && s1val1 != 0) // only 1
-            newpc = {s1pre, ir `Imm8};
-        else
-            newpc = pc + 1;
-    end
- 
-	
+    always @(*) newpc = (s3op1 == `OPjr) ? s3val1 : 
+                        (
+                            (s3op2 == `OPjr) ? s3val2 : 
+                            (
+                                (s3op1 == `OPjp8 || s3op1 == `OPjz8 && s3val1 == 0 || s3op1 == `OPjnz8 && s3val1 != 0) ? {s3pre, ir `Imm8} : pc + 1
+                            )
+                        );
+    // begin
+    //     if(s1op1 == `OPjp8) // only 1
+    //         newpc = {s1pre, ir `Imm8};
+    //     else if(s1op1 == `OPjr)
+    //         newpc = s1val1;
+    //     else if(s1op2 == `OPjr)
+    //         newpc = s1val2;
+    //     else if(s1op1 == `OPjz8 && s1val1 == 0) // only 1
+    //         newpc = {s1pre, ir `Imm8};
+    //     else if(s1op1 == `OPjnz8 && s1val1 != 0) // only 1
+    //         newpc = {s1pre, ir `Imm8};
+    //     else
+    //         newpc = pc + 1;
+    // end
 	
 	//STAGE 0: FETCH
 	always @(posedge clk) if (!halt) begin
