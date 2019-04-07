@@ -393,9 +393,9 @@ module processor(halt, reset, clk);
 	always @(posedge clk) if (!halt) begin
 		s0op1 <= (ifsquash ? `OPnop1 : op1);
 		s0op2 <= (ifsquash ? `OPnop2 : op2);
-		s0regdst <= (ifsquash ? 0 : regdst1);
-		s0src <= regfile[ir `REG1];  			
-		s0src2 <= regfile[ir `REG2];
+		s0regdst <= (ifsquash ? 0 : regdst1); //Maybe we need two regdst?
+		s0src <= regfile[ir `REG1];  //Do we need to pass this two src to the next stage?			
+		s0src2 <= regfile[ir `REG2]; //
 		pc <= newpc;
 	end 
 
@@ -403,7 +403,7 @@ module processor(halt, reset, clk);
 	always @(posedge clk) if (!halt) begin
 		s1op1 <= (rrsquash ? `OPnop1 : s0op1);
 		s1op2 <= (rrsquash ? `OPnop2 : s0op2);
-		s1regdst2 <= (rrsquash ? 0 : s0regdst);
+		s1regdst2 <= (rrsquash ? 0 : s0regdst); //Maybe we need two regdst?
  		s1val1 <= s0val1;
   		s1val2 <= srcval2;
 	end
@@ -426,7 +426,8 @@ module processor(halt, reset, clk);
 	end
     	// stage 4 register write
     	always @ (posdge clk if (!halt) begin 
-        	if (s2regdst2 != 0) regfile[s2regdst2] <=s2val;
+        	if (s3regdst2 != 0) regfile[s3regdst1] <=s3val1;
+        	if (s3regdst2 != 0) regfile[s3regdst2] <=s3val2;
 	end
 
 endmodule
