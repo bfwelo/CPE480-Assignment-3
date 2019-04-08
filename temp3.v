@@ -137,41 +137,45 @@ module processor(halt, reset, clk);
 		$readmemh1(mainmem);
 	end
 
-    s0g1[0] = s0op1 < 9;
-    s0g1[1] = s0op1 == `OPnot || s0op1 == `OPr2a || s0op1 == `OPcvt;
-    s0g1[2] = s0op1 == `OPlf || s0op1 == `OPli || s0op1 == `OPa2r;
-    s0g1[3] = s0op1 == `OPst;
-    s0g1[4] = s0op1 == `OPjr || s0op1 == `OPjnz8 || s0op1 == `OPjz8;
+        // does this modify acc or reg?
+        s3g1[0] = s3op1 < 9;
+        s3g1[1] = s3op1 == `OPnot || s3op1 == `OPr2a || s3op1 == `OPcvt;
+        s3g1[2] = s3op1 == `OPlf || s3op1 == `OPli || s3op1 == `OPa2r;
+        s3g1[3] = s3op1 == `OPcf8 || s3op1 == `OPci8;
 
-    t[0] = s0g1[0] || s0g1[2] || s0g1[3];
-    t[1] = s0g1[0] || s0g1[1] || s0g1[3] || s0g1[4];
+        t[0] = s3g1[0] || s3g1[1]; // modifies acc1
+        t[1] = s3g1[2] || s3g1[3]; // modifies reg1
 
-    s3g1[0] = s3op1 < 9;
-    s3g1[1] = s3op1 == `OPnot || s3op1 == `OPr2a || s3op1 == `OPcvt;
-    s3g1[2] = s3op1 == `OPlf || s3op1 == `OPli || s3op1 == `OPa2r;
-    s3g1[5] = s3op1 == `OPcf8 || s3op1 == `OPci8;
+        // 2nd half -----------------
 
-    t[2] = s3g1[0] || s3g1[1];
-    t[3] = s3g1[2] || s3g1[5];
+        s3g2[0] = s3op2 < 9;
+        s3g2[1] = s3op2 == `OPnot || s3op2 == `OPr2a || s3op2 == `OPcvt;
+        s3g2[2] = s3op2 == `OPlf || s3op2 == `OPli || s3op2 == `OPa2r;
+        // cf8 and ci8 don't exist in second half
 
-    // 2nd half -----------------
-    s0g2[0] = s0op2 < 9;
-    s0g2[1] = s0op2 == `OPnot || s0op2 == `OPr2a || s0op2 == `OPcvt;
-    s0g2[2] = s0op2 == `OPlf || s0op2 == `OPli || s0op2 == `OPa2r;
-    s0g2[3] = s0op2 == `OPst;
-    s0g2[4] = s0op2 == `OPjr || s0op2 == `OPjnz8 || s0op2 == `OPjz8;
+        t[2] = s3g2[0] || s3g2[1]; // modifies acc1
+        t[3] = s3g2[2];            // modifies reg2
+        
+    // does this rely on acc or reg?
+        s0g1[4] = s0op1 < 9;
+        s0g1[5] = s0op1 == `OPnot || s0op1 == `OPr2a || s0op1 == `OPcvt;
+        s0g1[6] = s0op1 == `OPlf || s0op1 == `OPli || s0op1 == `OPa2r;
+        s0g1[7] = s0op1 == `OPst;
+        s0g1[8] = s0op1 == `OPjr || s0op1 == `OPjnz8 || s0op1 == `OPjz8;
 
-    t[4] = s0g2[0] || s0g2[2] || s0g2[3];
-    t[5] = s0g2[0] || s0g2[1] || s0g2[3] || s0g2[4];
+        t[4] = s0g1[4] || s0g1[6] || s0g1[7];            // relies on acc1
+        t[5] = s0g1[4] || s0g1[5] || s0g1[7] || s0g1[8]; // relies on reg0
 
-    s3g2[0] = s3op2 < 9;
-    s3g2[1] = s3op2 == `OPnot || s3op2 == `OPr2a || s3op2 == `OPcvt;
-    s3g2[2] = s3op2 == `OPlf || s3op2 == `OPli || s3op2 == `OPa2r;
-    s3g2[5] = s3op2 == `OPcf8 || s3op2 == `OPci8;
+        // 2nd half -----------------
 
-    t[6] = s3g2[0] || s3g2[1];
-    t[7] = s3g2[2] || s3g2[5];
+        s0g2[4] = s0op2 < 9;
+        s0g2[5] = s0op2 == `OPnot || s0op2 == `OPr2a || s0op2 == `OPcvt;
+        s0g2[6] = s0op2 == `OPlf || s0op2 == `OPli || s0op2 == `OPa2r;
+        s0g2[7] = s0op2 == `OPst;
+        s0g2[8] = s0op2 == `OPjr;
 
+        t[6] = s0g2[4] || s0g2[6] || s0g2[7];            // relies on acc2
+        t[7] = s0g2[4] || s0g2[5] || s0g2[7] || s0g2[8]; // relies on reg1
 
     always @(*) begin
         if(t[0])  
