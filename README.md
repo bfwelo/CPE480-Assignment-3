@@ -101,3 +101,27 @@ for all:
 - [ ] 4.) reg write
 - s4regsrc <= s3regsrc
 - literally just writing values to registers
+
+# example
+```
+0 pre 0
+1 add 1, add 0
+2 add 1, add 0
+3 jnz8 $0 5
+4 add 1, add 1
+5 sys
+```
+
+| stage 0   | stage 1   | stage 2   | stage 3   | stage 4   |
+| fetch     | read      | alu1      | alu2      | write     | reg0 = 0, s3val1 = 0, pc = 0, pre = 0
+| --------- | --------- | --------- | --------- | --------- |
+| pre 0     | nop       | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 0, pre = 0, newpc = 1, flush = false
+| add 1     | pre 0     | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 1, pre = 0, newpc = 2, flush = false
+| add 1     | add 1     | pre 0     | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 2, pre = 0, newpc = 3, flush = false
+| jnz8 $0 5 | add 1     | add 1     | pre 0     | nop       | reg0 = 0, s3val1 = 0, pc = 3, pre = 0, newpc = 4, flush = false
+| add 1     | jnz8 $0 5 | add 1     | add 1     | pre 0     | reg0 = 0, s3val1 = 1, pc = 4, pre = 0, newpc = 5, flush = false 
+| sys       | add 1     | jnz8 $0 5 | add 1     | add 1     | reg0 = 1, s3val1 = 2, pc = 5, pre = 0, newpc = 5, flush = true // soonest we can write to pc
+| sys       | nop       | nop       | jnz8 $0 5 | add 1     | reg0 = 2, s3val1 = 2, pc = 5, pre = 0, newpc = 6, flush = false
+| halt      | sys       | nop       | nop       | jnz8 $0 5 | reg0 = 2, s3val1 = 2, pc = 6, pre = 0, newpc = 7, flush = false
+| halt      | halt      | sys       | nop       | add 1     | reg0 = 2, s3val1 = 2, pc = 7, pre = 0, newpc = 8, flush = false
+| halt      | halt      | halt      | sys       | nop       | done

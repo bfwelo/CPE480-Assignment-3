@@ -16,7 +16,11 @@
 
 `define ACC1 3'b000 // Location for first accumulator
 `define ACC2 3'b001 // Location for second accumulator
-`define TYPEBIT 16 // Where the register type is defined (float = 1, int = 0)
+
+// TACKY data type flag values
+`define	TFLOAT	1'b1
+`define	TINT	1'b0
+`define	TAG	[16] // Where the register type is defined (float = 1, int = 0)
 
 // TODO: modify for our code
 `define REGWORD [16:0]
@@ -73,6 +77,94 @@
 `define F32767  16'h46ff  // closest approx to 32767, actually 32640
 `define F32768  16'hc700  // -32768
 
+module alu2(valid, o, op, a, b);
+    output valid;
+    output `REGWORD o;
+    input `OP op;
+    input `REGWORD a, b;
+    reg `REGWORD t;
+    reg ok;
+
+    wire `FLOAT recipf, mulf;
+
+    fmul myfmul(mulf, a `WORD, ((op == `OPmul) ? b `WORD : recipf));
+    
+    assign o = t;
+    assign valid = ok;
+
+    always @(*) begin
+    t = a;
+    ok = 1;
+    case ({a `TAG, op})
+
+        {`TINT, `OPdiv}:   t = {`TINT, (a `WORD / b `WORD)};
+        {`TFLOAT, `OPdiv}: t = {`TFLOAT, mulf};
+        {`TINT, `OPmul}:   t = {`TINT, (a `WORD * b `WORD)};
+        {`TFLOAT, `OPmul}: t = {`TFLOAT, mulf};
+ 
+        default: ok = 0;
+    endcase
+    end
+endmodule
+
+
+module alu1(valid, o, op, a, b);
+    output valid;
+    output `REGWORD o;
+    input `OP op;
+    input `REGWORD a, b;
+    reg `REGWORD t;
+    reg ok = 0;
+    wire sltf;
+    wire `WORD cvi;
+    wire `FLOAT addf, cvf, recipf, mulf, shf;
+    wire signed `WORD sa, sb;
+
+    fadd myfadd(addf, a `WORD, ((op == `OPsub) ? (b `WORD ^ 16'h8000) : b `WORD));
+
+    i2f myi2f(cvf, b `WORD);
+
+    f2i myf2i(cvi, b `WORD);
+
+    frecip myfrecip(recipf, b `WORD);
+
+    fshift myfshift(shf, a `WORD, b `WORD);
+    fslt myfslt(sltf, a `WORD, b `WORD);
+    assign sa = a `WORD; // signed version of a
+    assign sb = b `WORD; // signed version of b
+    assign o = t;
+    assign valid = ok;
+
+    always @(*) begin
+        t = a;
+        ok = 1;
+        case ({a `TAG, op})
+            {`TINT, `OPadd}:   t = {`TINT, (a `WORD + b `WORD)};
+            {`TFLOAT, `OPadd}: t = {`TFLOAT,  addf};
+            {`TINT, `OPand},
+            {`TFLOAT, `OPand}: t `WORD = a `WORD & b `WORD;
+            {`TINT, `OPcvt},
+            {`TFLOAT, `OPcvt}: t = ((b `TAG == `TFLOAT) ? {`TINT, cvi} : {`TFLOAT, cvf});
+            {`TFLOAT, `OPdiv}: t = {`TFLOAT, recipf};
+            {`TINT, `OPmul},
+            {`TINT, `OPdiv},
+            {`TFLOAT, `OPmul}: t = b;
+            {`TINT, `OPnot},
+            {`TFLOAT, `OPnot}: t `WORD = ~(b `WORD);
+            {`TINT, `OPor},
+            {`TFLOAT, `OPor}:  t `WORD = (a `WORD | b `WORD);
+            {`TINT, `OPsh}:    t = {`TINT, ((sb < 0) ? (sa >> -sb) : (sa << sb))};
+            {`TFLOAT, `OPsh}:  t = {`TFLOAT, shf};
+            {`TINT, `OPslt}:   t = {`TINT, (sa < sb)};
+            {`TFLOAT, `OPslt}: t = {`TINT, 15'b0, sltf};
+            {`TINT, `OPsub}:   t `WORD = sa - sb;
+            {`TFLOAT, `OPsub}: t = {`TFLOAT, addf};
+            {`TINT, `OPxor},
+            {`TFLOAT, `OPxor}: t `WORD = (a `WORD ^ b `WORD);
+            default:           ok = 0;
+        endcase
+    end
+endmodule
 
 module processor(halt, reset, clk);
     output reg halt;
@@ -85,7 +177,8 @@ module processor(halt, reset, clk);
 	reg `WORD pc = 0;
 	reg `WORD ir;
 
-    wire `WORD alu1res, alu2res;
+    wire `REGWORD alu1res1, alu2res1;
+    wire `REGWORD alu1res2, alu2res2;
 
     reg `OP s0op1, s1op1, s2op1, s3op1;
     reg `OP s0op2, s1op2, s2op2, s3op2;
@@ -98,22 +191,30 @@ module processor(halt, reset, clk);
     reg `HWORD s0im, s1im, s2im, s3im; 
 
     // actual values from registers
-    reg `WORD s0val1, s1val1, s2val1, s3val1;
-    reg `WORD s0val2, s1val2, s2val2, s3val2;
+    reg `REGWORD s0val1, s1val1, s2val1, s3val1;
+    reg `REGWORD s0val2, s1val2, s2val2, s3val2;
 
     // accumulator values
-    reg `WORD s0acc1, s1acc1, s2acc1, s3acc1;
-    reg `WORD s0acc2, s1acc2, s2acc2, s3acc2;
+    reg `REGWORD s0acc1, s1acc1, s2acc1, s3acc1;
+    reg `REGWORD s0acc2, s1acc2, s2acc2, s3acc2;
 
-    reg `WORD s1pre, s2pre, s3pre;
+    reg `HWORD s0pre, s1pre, s2pre, s3pre;
 
     // intermediate condition values
     reg s3g1[3:0];
     reg s3g2[3:0];
     reg t[3:0];
     
-    reg ifsquash, rrsquash; 
+    reg ifsquash; 
     reg `WORD newpc;
+    wire valid1_1, valid2_1, valid1_2, valid2_2;
+
+    alu1 my1alu1(valid1_1, alu1res1, s1op1, s1acc1, s1val1);
+    alu2 my1alu2(valid1_2, alu2res1, s2op1, s2acc1, s2val1);
+    // second half
+    alu1 my2alu1(valid2_1, alu1res2, s1op2, s1acc2, s1val2);
+    alu2 my2alu2(valid2_2, alu2res2, s2op2, s2acc2, s2val2);
+
 
 	always @(reset) begin
 		pc = 0;
@@ -128,26 +229,36 @@ module processor(halt, reset, clk);
 		s1op2 = `OPnop2;
 		s2op2 = `OPnop2;
 		s3op2 = `OPnop2;
+
 		$readmemh0(regfile);
 		$readmemh1(mainmem);
 	end
 
-    always @(*) ir = mainmen[pc];
-	
-	always @(*) ifsquash = (s1op1 == `OPjr) &&(s1op1 == `OPjz8) && (s1op1 == `OPjnz8) &&(s1op1 == `OPjp8 );
+    always @(*) ir = mainmem[pc];
+
+    always @(*) ifsquash = (s3op1 == `OPjr) && (s3op1 == `OPjz8) && (s3op1 == `OPjnz8) && (s3op1 == `OPjp8);
+
+    always @(*) newpc = (s2op1 == `OPjr) ? s2val1`WORD : 
+                        (
+                            (s2op2 == `OPjr) ? s2val2`WORD : 
+                            (
+                                (s2op1 == `OPjp8 || s2op1 == `OPjz8 && s2val1`WORD == 0 || s2op1 == `OPjnz8 && s2val1`WORD != 0) ? {s2pre, s2im} : pc + 1
+                            )
+                        );
 
 
     // value forwarding for acc, reg, and pre
     // modify acc: not, add, sub, xor, and, or, sh, slt, mul, div, r2a, cvt
     // modify reg: cf8, ci8, li, lf, a2r
     always @(*) begin
+    // does this modify acc or reg?
         s3g1[0] = s3op1 < 9;
         s3g1[1] = s3op1 == `OPnot || s3op1 == `OPr2a || s3op1 == `OPcvt;
         s3g1[2] = s3op1 == `OPlf || s3op1 == `OPli || s3op1 == `OPa2r;
         s3g1[3] = s3op1 == `OPcf8 || s3op1 == `OPci8;
 
-        t[0] = s3g1[0] || s3g1[1];
-        t[1] = s3g1[2] || s3g1[3];
+        t[0] = s3g1[0] || s3g1[1]; // modifies acc1
+        t[1] = s3g1[2] || s3g1[3]; // modifies reg1
 
         // 2nd half -----------------
 
@@ -156,103 +267,241 @@ module processor(halt, reset, clk);
         s3g2[2] = s3op2 == `OPlf || s3op2 == `OPli || s3op2 == `OPa2r;
         // cf8 and ci8 don't exist in second half
 
-        t[2] = s3g2[0] || s3g2[1];
-        t[3] = s3g2[2];
-
-        // s3op2 <= 16 is for checking if the instruction in stage 3 even has 2 operators
+        t[2] = s3g2[0] || s3g2[1]; // modifies acc2
+        t[3] = s3g2[2];            // modifies reg2
+        
+        // s3op2 <= 16 is for checking if the instruction in stage 3 even has 2 instructions
         // favors reg 1 value in later stage
-        s0acc1 = (t[0] || t[1] && s3reg1 == `ACC1) ? s3val1 : ((t[3] && s3reg2 == `ACC1 && s3op2 <= 16) ? s3val2 : regfile[`ACC1]);
-        s0val1 = (t[1] && s0reg1 == s3reg1) ? s3val1 : ((t[3] && s0reg1 == s3reg2 && s3op2 <= 16) ? s3val2 : regfile[s0reg1]);
+        s0acc1 = (t[0] || t[1] && s3reg1 == `ACC1) ? s3val1`WORD : ((t[3] && s3reg2 == `ACC1 && s3op2 <= 16) ? s3val2`WORD : regfile[`ACC1]);
+        s0val1 = (t[1] && s0reg1 == s3reg1) ? s3val1`WORD : ((t[3] && s0reg1 == s3reg2 && s3op2 <= 16) ? s3val2`WORD : regfile[s0reg1]);
 
-        s0acc2 = (t[2] || t[3] && s3reg2 == `ACC2 && s3op2 <= 16) ? s3val2 : ((t[1] && s3reg1 == `ACC2) ? s3val1 : regfile[`ACC2]);
-        s0val2 = (t[1] && s0reg2 == s3reg1) ? s3val1 : ((t[3] && s0reg2 == s3reg2 && s3op2 <= 16) ? s3val2 : regfile[s0reg2]);
+        s0acc2 = (t[2] || t[3] && s3reg2 == `ACC2 && s3op2 <= 16) ? s3val2`WORD : ((t[1] && s3reg1 == `ACC2) ? s3val1`WORD : regfile[`ACC2]);
+        s0val2 = (t[1] && s0reg2 == s3reg1) ? s3val1`WORD : ((t[3] && s0reg2 == s3reg2 && s3op2 <= 16) ? s3val2`WORD : regfile[s0reg2]);
 
         s0pre = (s3op1 == `OPpre || (s3op2 <= 16 && s3op2 == `OPpre)) ? s3pre : (s0op1 == `OPpre)? ir `IMM8 : pre;
 
     end  
 
-
-    // 0 pre 0
-    // 1 add 1, add 0
-    // 2 add 1, add 0
-    // 3 jnz8 $0 5
-    // 4 add 1, add 1
-    // 5 sys
-    // | fetch     | read      | alu1      | alu2      | write     | reg0 = 0, s3val1 = 0, pc = 0, pre = 0
-    // | pre 0     | nop       | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 0, pre = 0, newpc = 1, flush = false
-    // | add 1     | pre 0     | nop       | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 1, pre = 0, newpc = 2, flush = false
-    // | add 1     | add 1     | pre 0     | nop       | nop       | reg0 = 0, s3val1 = 0, pc = 2, pre = 0, newpc = 3, flush = false
-    // | jnz8 $0 5 | add 1     | add 1     | pre 0     | nop       | reg0 = 0, s3val1 = 0, pc = 3, pre = 0, newpc = 4, flush = false
-    // | add 1     | jnz8 $0 5 | add 1     | add 1     | pre 0     | reg0 = 0, s3val1 = 1, pc = 4, pre = 0, newpc = 5, flush = false 
-    // | sys       | add 1     | jnz8 $0 5 | add 1     | add 1     | reg0 = 1, s3val1 = 2, pc = 5, pre = 0, newpc = 5, flush = true // soonest we can write to pc
-    // | sys       | nop       | nop       | jnz8 $0 5 | add 1     | reg0 = 2, s3val1 = 2, pc = 5, pre = 0, newpc = 6, flush = false
-    // | halt      | sys       | nop       | nop       | jnz8 $0 5 | reg0 = 2, s3val1 = 2, pc = 6, pre = 0, newpc = 7, flush = false
-    // | halt      | halt      | sys       | nop       | add 1     | reg0 = 2, s3val1 = 2, pc = 7, pre = 0, newpc = 8, flush = false
-    // | halt      | halt      | halt      | sys       | nop       | done
-             
-
-    // DONE: new pc value
-    always @(*) newpc = (s3op1 == `OPjr) ? s3val1 : 
-                        (
-                            (s3op2 == `OPjr) ? s3val2 : 
-                            (
-                                (s3op1 == `OPjp8 || s3op1 == `OPjz8 && s3val1 == 0 || s3op1 == `OPjnz8 && s3val1 != 0) ? {s3pre, ir `Imm8} : pc + 1
-                            )
-                        );
-    // begin
-    //     if(s1op1 == `OPjp8) // only 1
-    //         newpc = {s1pre, ir `Imm8};
-    //     else if(s1op1 == `OPjr)
-    //         newpc = s1val1;
-    //     else if(s1op2 == `OPjr)
-    //         newpc = s1val2;
-    //     else if(s1op1 == `OPjz8 && s1val1 == 0) // only 1
-    //         newpc = {s1pre, ir `Imm8};
-    //     else if(s1op1 == `OPjnz8 && s1val1 != 0) // only 1
-    //         newpc = {s1pre, ir `Imm8};
-    //     else
-    //         newpc = pc + 1;
-    // end
-	
 	//STAGE 0: FETCH
 	always @(posedge clk) if (!halt) begin
-		s0op1 <= (ifsquash ? `OPnop1 : op1);
-		s0op2 <= (ifsquash ? `OPnop2 : op2);
-		s0regdst <= (ifsquash ? 0 : regdst1); //Maybe we need two regdst?
-		s0src <= regfile[ir `REG1];  //Do we need to pass this two src to the next stage?			
-		s0src2 <= regfile[ir `REG2]; //
+		s0op1 <= ir `OP1;
+		s0op2 <= ir `OP2;
+
+        s0reg1 <= ir `REG1;
+        s0reg2 <= ir `REG2;
+        s0im <= ir `IMM8;
+
 		pc <= newpc;
 	end 
 
 	//STAGE 1: Reg Read
 	always @(posedge clk) if (!halt) begin
-		s1op1 <= (rrsquash ? `OPnop1 : s0op1);
-		s1op2 <= (rrsquash ? `OPnop2 : s0op2);
-		s1regdst2 <= (rrsquash ? 0 : s0regdst); //Maybe we need two regdst?
+		s1op1 <= (ifsquash ? `OPnop1 : s0op1);
+		s1op2 <= (ifsquash ? `OPnop2 : s0op2);
+
+        s1reg1 <= s0reg1;
+        s1reg2 <= s0reg2;
+
+        s1acc1 <= s0acc1;
+        s1acc2 <= s0acc2;
+        
+        s1pre  <= s0pre;
+        s1im <= s0im;
+
  		s1val1 <= s0val1;
-  		s1val2 <= srcval2;
-	end
-	// stage 2 ALU // some varibles will have to change and might miss something
-   	always @ (posdge clk) if (!halt) begin
-    
-		s2op1 <= (( s1op1==)?something : s1op1);// set something to distinguish the two kind of opcode 
-		s2op2 <= (( s1op2==)?something : s1op2);// set something to distinguish the two kind of opcode 
-		s2regdst2 <= s1regdst2;
-
-		s2val1 <= ALU1out;
-		s2val2 <= ALU2out;
-	end
-    	// stage 3 ALU2
-    	always @ (posdge clk) if (!halt) begin 
-		s3op1 <= ((s2op1==something)?s2op1 : nops);
-		s3val1 <= ((s2op1!==something)?s2val1 : result for floating ALU1)
-		s3op2 <= ((s2op2==something)?s2op1 : nops);
-		s3val2 <= ((s2op1!==something)?s2val2 : result for floating ALU2)
-	end
-    	// stage 4 register write
-    	always @ (posdge clk if (!halt) begin 
-        	if (s3regdst2 != 0) regfile[s3regdst1] <=s3val1;
-        	if (s3regdst2 != 0) regfile[s3regdst2] <=s3val2;
+  		s1val2 <= s0val2;
 	end
 
+	// stage 2 ALU / memory
+   	always @ (posedge clk) if (!halt) begin
+		s2op1 <= s1op1; // squashing happens in this stage
+		s2op2 <= s1op2;
+
+        s2reg1 <= s1reg1;
+        s2reg2 <= s1reg2;
+
+        s2acc1 <= s1acc1;
+        s2acc2 <= s1acc2;
+
+        s2pre <= s1pre;
+        s2im <= s1im;
+
+        if(valid1_1)
+		    s2val1 <= alu1res1; // div is recip, mul is just s1val1
+        else
+            case(s1op1)
+            `OPci8: begin s2val1 <= {`TINT, pre, s1im}; end
+            `OPcf8: begin s2val1 <= {`TFLOAT, pre, s1im}; end
+            `OPlf:  begin s2val1 <= {`TFLOAT, mainmem[s1val1`WORD]}; end
+            `OPli:  begin s2val1 <= {`TINT, mainmem[s1val1`WORD]}; end
+		    `OPa2r: begin s2val1 <= s1acc1; end
+            `OPr2a: begin s2val1 <= s1val1; s2reg1 <= `ACC1; end
+            `OPst:  begin mainmem[s1val1`WORD] = s1acc1`WORD; end
+            endcase
+
+        if(valid2_1)
+		    s2val2 <= alu2res1;
+        else
+            case(s1op2)
+            `OPlf:  begin s2val2 <= {`TFLOAT, mainmem[s1val2`WORD]}; end
+            `OPli:  begin s2val2 <= {`TINT, mainmem[s1val2`WORD]}; end
+		    `OPa2r: begin s2val2 <= s1acc2; end
+            `OPr2a: begin s2val2 <= s1val2; s2reg2 <= `ACC2; end
+            `OPst:  begin mainmem[s1val2`WORD] = s1acc2`WORD; end
+            endcase
+	end
+
+    // stage 3 ALU2 / pc changes
+    always @ (posedge clk) if (!halt) begin
+
+    	s3op1 <= s2op1; 
+		s3op2 <= s2op2;
+
+        s3reg1 <= s2reg1;
+        s3reg2 <= s2reg2;
+
+        s3pre  <= s2pre;
+
+        // either compute the second part or pass through
+        s3val1 = valid2_1 ? alu1res2 : s2val1; 
+        s3val2 = valid2_2 ? alu2res2 : s2val2;
+
+	end
+
+    // stage 4 register write
+    always @ (posedge clk) if (!halt) begin 
+        if(t[0])
+            regfile[`ACC1] <= s3val1;
+        
+        else if(t[1])
+            regfile[s3reg1] <= s3val1;
+
+        else if(t[2])
+            regfile[`ACC2] <= s3val1;
+        
+        else if(t[3])
+            regfile[s3reg2] <= s3val1;
+
+        else if(s3op1 == `OPpre)
+            pre <= s3pre;
+
+	end
+
+endmodule
+
+// ************************************************ Float ********************************************
+
+// Floating point Verilog modules for CPE480
+// Created February 19, 2019 by Henry Dietz, http://aggregate.org/hankd
+// Distributed under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+
+// Count leading zeros, 16-bit (5-bit result) d=lead0s(s)
+module lead0s(d, s);
+	output wire [4:0] d;
+	input wire `WORD s;
+	wire [4:0] t;
+	wire [7:0] s8;
+	wire [3:0] s4;
+	wire [1:0] s2;
+	assign t[4] = 0;
+	assign {t[3],s8} = ((|s[15:8]) ? {1'b0,s[15:8]} : {1'b1,s[7:0]});
+	assign {t[2],s4} = ((|s8[7:4]) ? {1'b0,s8[7:4]} : {1'b1,s8[3:0]});
+	assign {t[1],s2} = ((|s4[3:2]) ? {1'b0,s4[3:2]} : {1'b1,s4[1:0]});
+	assign t[0] = !s2[1];
+	assign d = (s ? t : 16);
+endmodule
+
+// Float set-less-than, 16-bit (1-bit result) torf=a<b
+module fslt(torf, a, b);
+	output wire torf;
+	input wire `FLOAT a, b;
+	assign torf = (a `FSIGN && !(b `FSIGN)) ||
+			  (a `FSIGN && b `FSIGN && (a[14:0] > b[14:0])) ||
+			  (!(a `FSIGN) && !(b `FSIGN) && (a[14:0] < b[14:0]));
+endmodule
+
+// Floating-point addition, 16-bit r=a+b
+module fadd(r, a, b);
+	output wire `FLOAT r;
+	input wire `FLOAT a, b;
+	wire `FLOAT s;
+	wire [8:0] sexp, sman, sfrac;
+	wire [7:0] texp, taman, tbman;
+	wire [4:0] slead;
+	wire ssign, aegt, amgt, eqsgn;
+	assign r = ((a == 0) ? b : ((b == 0) ? a : s));
+	assign aegt = (a `FEXP > b `FEXP);
+	assign texp = (aegt ? (a `FEXP) : (b `FEXP));
+	assign taman = (aegt ? {1'b1, (a `FFRAC)} : ({1'b1, (a `FFRAC)} >> (texp - a `FEXP)));
+	assign tbman = (aegt ? ({1'b1, (b `FFRAC)} >> (texp - b `FEXP)) : {1'b1, (b `FFRAC)});
+	assign eqsgn = (a `FSIGN == b `FSIGN);
+	assign amgt = (taman > tbman);
+	assign sman = (eqsgn ? (taman + tbman) : (amgt ? (taman - tbman) : (tbman - taman)));
+	lead0s m0(slead, {sman, 7'b0});
+	assign ssign = (amgt ? (a `FSIGN) : (b `FSIGN));
+	assign sfrac = sman << slead;
+	assign sexp = (texp + 1) - slead;
+	assign s = (sman ? (sexp ? {ssign, sexp[7:0], sfrac[7:1]} : 0) : 0);
+endmodule
+
+// Floating-point multiply, 16-bit r=a*b
+module fmul(r, a, b);
+	output wire `FLOAT r;
+	input wire `FLOAT a, b;
+	wire [15:0] m; // double the bits in a fraction, we need high bits
+	wire [7:0] e;
+	wire s;
+	assign s = (a `FSIGN ^ b `FSIGN);
+	assign m = ({1'b1, (a `FFRAC)} * {1'b1, (b `FFRAC)});
+	assign e = (((a `FEXP) + (b `FEXP)) -127 + m[15]);
+	assign r = (((a == 0) || (b == 0)) ? 0 : (m[15] ? {s, e, m[14:8]} : {s, e, m[13:7]}));
+endmodule
+
+// Floating-point reciprocal, 16-bit r=1.0/a
+// Note: requires initialized inverse fraction lookup table
+module frecip(r, a);
+	output wire `FLOAT r;
+	input wire `FLOAT a;
+	reg [6:0] look[127:0];
+	initial $readmemh("vmem0-float.vmem", look);
+	assign r `FSIGN = a `FSIGN;
+	assign r `FEXP = 253 + (!(a `FFRAC)) - a `FEXP;
+	assign r `FFRAC = look[a `FFRAC];
+endmodule
+
+// Floating-point shift, 16 bit
+// Shift +left,-right by integer
+module fshift(r, f, i);
+	output wire `FLOAT r;
+	input wire `FLOAT f;
+	input wire `INT i;
+	assign r `FFRAC = f `FFRAC;
+	assign r `FSIGN = f `FSIGN;
+	assign r `FEXP = (f ? (f `FEXP + i) : 0);
+endmodule
+
+// Integer to float conversion, 16 bit
+module i2f(f, i);
+	output wire `FLOAT f;
+	input wire `INT i;
+	wire [4:0] lead;
+	wire `WORD pos;
+	assign pos = (i[15] ? (-i) : i);
+	lead0s m0(lead, pos);
+	assign f `FFRAC = (i ? ({pos, 8'b0} >> (16 - lead)) : 0);
+	assign f `FSIGN = i[15];
+	assign f `FEXP = (i ? (128 + (14 - lead)) : 0);
+endmodule
+
+// Float to integer conversion, 16 bit
+// Note: out-of-range values go to -32768 or 32767
+module f2i(i, f);
+	output wire `INT i;
+	input wire `FLOAT f;
+	wire `FLOAT ui;
+	wire tiny, big;
+	fslt m0(tiny, f, `F32768);
+	fslt m1(big, `F32767, f);
+	assign ui = {1'b1, f `FFRAC, 16'b0} >> ((128+22) - f `FEXP);
+	assign i = (tiny ? 0 : (big ? 32767 : (f `FSIGN ? (-ui) : ui)));
 endmodule
