@@ -111,7 +111,10 @@ for all:
 4 add 1, add 1
 5 sys
 ```
+
 example: 
+
+
 | stage 0   | stage 1   | stage 2   | stage 3   | stage 4   |
 | --------- | --------- | --------- | --------- | --------- |
 | fetch     | read      | alu1      | alu2      | write     |
